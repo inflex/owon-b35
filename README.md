@@ -27,11 +27,17 @@ The program will display in text the current meter display and also generate a t
 
 # Usage
  ./owoncli  -a <address> [-t] [-o <filename>] [-d] [-q]
+ 
         -h: This help
+        
         -a <address>: Set the address of the B35 meter, eg, -a 98:84:E3:CD:C0:E5
+        
         -t: Generate a text file containing current meter data (default to owon.txt)
+        
         -o <filename>: Set the filename for the meter data ( overrides 'owon.txt' )
+        
         -d: debug enabled
+        
         -q: quiet output
 
 
