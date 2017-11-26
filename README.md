@@ -18,10 +18,11 @@ gatttool needs to be installed and operational in linux for owon-cli to work.
  sudo hcitool lescan
 
 
-3) Run owoncli with the multimeter address as the parameter
+3) Run owoncli with the multimeter address as the parameter ( and -t if you want the text file output as well )
 
- sudo ./owoncli -a 98:84:E3:CD:C0:E5
+ sudo ./owoncli -a 98:84:E3:CD:C0:E5 -t 
 
+(by default, you'll likely have to run this under sudo because the gatttool won't seem to talk to BLE devices initially without being superuser/root)
 
 The program will display in text the current meter display and also generate a text file called "owon.txt" which can be read in to programs like OpenBroadcaster so you can have a live on-screen-display of the multimeter.
 
