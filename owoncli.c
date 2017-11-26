@@ -128,7 +128,10 @@ int main( int argc, char **argv ) {
 	/*
 	 * Sanity check our parameters
 	 */
-	if (g.b35_address == NULL) exit(1);
+	if (g.b35_address == NULL) {
+		fprintf(stderr, "Owon B35 bluetooth address required, try 'sudo hcitool lescan' to get address\n");
+	   	exit(1);
+	}
 
 	/*
 	 * All good... let's get on with the job
@@ -137,7 +140,7 @@ int main( int argc, char **argv ) {
 	 * can read the bluetooth output from the B35 via STDIN
 	 *
 	 */
-	snprintf(cmd,sizeof(cmd), "gatttool -b %s --char-read --handle 0x2d --listen", argv[1]);
+	snprintf(cmd,sizeof(cmd), "gatttool -b %s --char-read --handle 0x2d --listen", g.b35_address);
 	fp = popen(cmd,"r");
 	if (fp == NULL) {
 		fprintf(stderr,"Error executing '%s'\n", cmd);
