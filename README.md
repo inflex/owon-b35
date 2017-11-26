@@ -26,7 +26,7 @@ gatttool needs to be installed and operational in linux for owon-cli to work.
 The program will display in text the current meter display and also generate a text file called "owon.txt" which can be read in to programs like OpenBroadcaster so you can have a live on-screen-display of the multimeter.
 
 # Usage
- ./owoncli  -a <address> [-t] [-o <filename>] [-d] [-q]
+ ./owoncli  -a &lt;address&gt; [-t] [-o <filename>] [-d] [-q]
  
         -h: This help
         
