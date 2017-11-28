@@ -4,18 +4,15 @@
 #include <string.h>
 #include <signal.h>
 
-#define DISP_MMODE 0x01
-#define DISP_SOMETHING 0x02 // really this is just a placeholder
-
 char help[] = " -a <address> [-t] [-o <filename>] [-d] [-q]\n"\
-	"\t-h: This help\n"\
-	"\t-a <address>: Set the address of the B35 meter, eg, -a 98:84:E3:CD:C0:E5\n"\
-	"\t-t: Generate a text file containing current meter data (default to owon.txt)\n"\
-	"\t-o <filename>: Set the filename for the meter data ( overrides 'owon.txt' )\n"\
-	"\t-d: debug enabled\n"\
-	"\t-q: quiet output\n"\
-	"\n\n\texample: owoncli -a 98:84:E3:CD:C0:E5 -t -o obsdata.txt\n"\
-	"\n";
+			   "\t-h: This help\n"\
+			   "\t-a <address>: Set the address of the B35 meter, eg, -a 98:84:E3:CD:C0:E5\n"\
+			   "\t-t: Generate a text file containing current meter data (default to owon.txt)\n"\
+			   "\t-o <filename>: Set the filename for the meter data ( overrides 'owon.txt' )\n"\
+			   "\t-d: debug enabled\n"\
+			   "\t-q: quiet output\n"\
+			   "\n\n\texample: owoncli -a 98:84:E3:CD:C0:E5 -t -o obsdata.txt\n"\
+			   "\n";
 
 uint8_t OLs[] = { 0x2b, 0x3f, 0x30, 0x3a, 0x3f };
 
@@ -109,7 +106,6 @@ void handle_sigint( int a ) {
 
 int main( int argc, char **argv ) {
 	char cmd[1024];
-	char minmax[128];
 	char mmode[128];
 	char uprefix[128];
 	char units[128];
@@ -130,7 +126,7 @@ int main( int argc, char **argv ) {
 	 */
 	if (g.b35_address == NULL) {
 		fprintf(stderr, "Owon B35 bluetooth address required, try 'sudo hcitool lescan' to get address\n");
-	   	exit(1);
+		exit(1);
 	}
 
 	/*
@@ -172,6 +168,10 @@ int main( int argc, char **argv ) {
 		uint8_t d[14];
 		uint8_t i = 0;
 		double v = 0.0;
+
+		units[0] = '\0';
+		uprefix[0] = '\0';
+		mmode[0] = '\0';
 
 
 		if (sigint_pressed) {
@@ -221,90 +221,79 @@ int main( int argc, char **argv ) {
 			case 48: break; // no DP at all (integer) 
 			case 49: v = v/1000; dps = 3; break;
 			case 50: v = v/100; dps = 2; break;
-			case 51: v = v/10; dps = 1; break;
-					 //			case 52: v = v/10; break; // something different though depending on mode
+//			case 51: v = v/100; dps = 2; break; // not a mode
+			case 52: v = v/10; dps = 1; break;
 		}
 
 		mmode[0] = '\0';
-		switch (d[7]) {
-			case 0: snprintf(mmode, sizeof(mmode)," "); break; // temperature?
-			case 1: snprintf(mmode, sizeof(mmode),"Manual"); break; // ohms-manual
-			case 8: snprintf(mmode, sizeof(mmode),"AC-minmax"); break;
-			case 9: snprintf(mmode, sizeof(mmode),"AC-manual"); break;
-			case 16: snprintf(mmode, sizeof(mmode),"DC-minmax"); break;
-			case 17: snprintf(mmode, sizeof(mmode),"DC-manual"); break;
-			case 20: snprintf(mmode, sizeof(mmode),"Delta"); break;
-			case 32: snprintf(mmode, sizeof(mmode)," "); break;
-			case 33: snprintf(mmode, sizeof(mmode),"Auto"); break; // ohms-auto
-			case 41: snprintf(mmode, sizeof(mmode),"AC-auto"); break;
-			case 49: snprintf(mmode, sizeof(mmode),"DC-auto");
-					 if (d[6] == 50) { v *= 10; dps--; }
-					 break;
-			case 51: snprintf(mmode, sizeof(mmode),"Hold"); break;
-			default: snprintf(mmode, sizeof(mmode),"#%d)",d[7]);
-		}
 
-		minmax[0] = '\0';
-		switch (d[8]) {
-			case 16: snprintf(minmax, sizeof(minmax), "min"); break;
-			case 32: snprintf(minmax, sizeof(minmax), "max"); break;
-			default: minmax[0] = '\0';
-		}
+		snprintf(mmode, sizeof(mmode), "%s%s%s%s%s%s%s%s"
+				, d[7]&0x10 ? "DC ":""
+				, d[7]&0x08 ? "AC ":""
+				, d[7]&0x20 ? "Auto ":"Manual "
+				, d[7]&0x04 ? "Delta ":""
+				, d[8]&0x20 ? "MAX ":""
+				, d[8]&0x10 ? "MIN ":""
+				, d[7]&0x02 ? "HOLD ":""
+				, d[8]&0x04 ? "LOWBAT":""
+				);
 
-		uprefix[0] = '\0';
 		switch (d[9]) {
-			case 0: if (d[10] == 4) {
-						v /= 10; dps++;
-						snprintf(uprefix,sizeof(uprefix),"n");
-					}
-					break;
+			case 2: 
+				snprintf(units, sizeof(units),"%%"); 
+				snprintf(mmode, sizeof(mmode),"Duty");
+				break;
 
-			case 2: snprintf(uprefix, sizeof(uprefix),"duty"); break;
-			case 4: snprintf(mmode, sizeof(mmode),"Diode"); break; // DIODE test mode
-			case 8: snprintf(uprefix, sizeof(uprefix)," "); break;
-			case 16: snprintf(uprefix, sizeof(uprefix),"M"); break;
-			case 32: snprintf(uprefix, sizeof(uprefix),"K"); break;
-			case 64: snprintf(uprefix, sizeof(uprefix),"m");
-					 if ((d[10] == 128)||(d[10] == 64)) {
-						 v /= 10; dps++;
-					 }
-					 break;
-			case 128: snprintf(uprefix, sizeof(uprefix),"u"); break;
-			default: snprintf(uprefix, sizeof(uprefix), "#%d", d[9]);
+			case 4: snprintf(mmode, sizeof(mmode),"->|-"); break; // DIODE test mode
 		}
 
-		units[0] = '\0';
 		switch(d[10]) {
-			case 0: snprintf(units,sizeof(units),"%%");
 			case 1: snprintf(units,sizeof(units),"'F" ); break;
 			case 2: snprintf(units,sizeof(units),"'C" ); break;
-			case 4: snprintf(units,sizeof(units),"F"); break;
+			case 4: snprintf(units,sizeof(units),"F"); 
+					if (d[8] & 0x02) snprintf(uprefix, sizeof(uprefix), "n");
+					break;
 			case 8: snprintf(units,sizeof(units),"Hz"); break;
 			case 16: snprintf(units,sizeof(units),"hFe"); break;
-			case 32: snprintf(units,sizeof(units),"Ohm");
-					 v = v/10;
-					 dps++;
+			case 32: snprintf(units,sizeof(units),"Ω");
+					 switch (d[9]) {
+						 case 8: snprintf(mmode, sizeof(mmode),"Continuity"); break;
+						case 16: snprintf(uprefix, sizeof(uprefix),"M"); break;
+						case 32: snprintf(uprefix, sizeof(uprefix),"k"); break;
+					 }
 					 break;
-			case 64: snprintf(units,sizeof(units),"A"); break;
-			case 128: snprintf(units,sizeof(units),"V"); break;
-			default: snprintf(units,sizeof(units),"#%d", d[10]);
+			case 64: snprintf(units,sizeof(units),"A"); 
+					if (d[9] & 0x80) {
+					   	snprintf(uprefix, sizeof(uprefix),"μ"); 
+					} 
+					if (d[9] & 0x40) {
+						snprintf(uprefix, sizeof(uprefix), "m");
+					}
+					 break;
+
+			case 128: snprintf(units,sizeof(units),"V"); 
+					  if (d[9] == 64) {
+						  snprintf(uprefix, sizeof(uprefix),"m");
+					  }
+					  break;
+
 		};
 
-		if (d[0] == '-') v = -v; // polarity
+		if (d[0] == '-') { v = -v; }
 
 		/** range checks **/
 		if ( memcmp( d, OLs, 5 ) == 0 )  {
-			snprintf(cmd, sizeof(cmd), "O.L %s\n%s", units, mmode );
+			snprintf(cmd, sizeof(cmd), "O.L %s%s\n%s", uprefix, units, mmode );
 		} else {
 			if (dps < 0) dps = 0;
 			if (dps > 4) dps = 4;
 
 			switch (dps) {
-				case 0: snprintf(cmd, sizeof(cmd), "%+05.0f%s%s\n%s %s",v, uprefix, units, mmode, minmax); break;
-				case 1: snprintf(cmd, sizeof(cmd), "%+06.1f%s%s\n%s %s",v, uprefix, units, mmode, minmax); break;
-				case 2: snprintf(cmd, sizeof(cmd), "%+06.2f%s%s\n%s %s",v, uprefix, units, mmode, minmax); break;
-				case 3: snprintf(cmd, sizeof(cmd), "%+06.3f%s%s\n%s %s",v, uprefix, units, mmode, minmax); break;
-				case 4: snprintf(cmd, sizeof(cmd), "%+06.4f%s%s\n%s %s",v, uprefix, units, mmode, minmax); break;
+				case 0: snprintf(cmd, sizeof(cmd), "% 05.0f%s%s\n%s",v, uprefix, units, mmode ); break;
+				case 1: snprintf(cmd, sizeof(cmd), "% 06.1f%s%s\n%s",v, uprefix, units, mmode ); break;
+				case 2: snprintf(cmd, sizeof(cmd), "% 06.2f%s%s\n%s",v, uprefix, units, mmode ); break;
+				case 3: snprintf(cmd, sizeof(cmd), "% 06.3f%s%s\n%s",v, uprefix, units, mmode ); break;
+				case 4: snprintf(cmd, sizeof(cmd), "% 06.4f%s%s\n%s",v, uprefix, units, mmode ); break;
 			}
 		}
 
@@ -318,7 +307,8 @@ int main( int argc, char **argv ) {
 			fprintf(stdout, "\33[2K\r"); // line erase
 			fprintf(stdout, "\x1B[A"); // line up
 			fprintf(stdout, "\33[2K\r"); // line erase
-			fprintf(stdout,"%s",cmd);
+			if (g.debug) fprintf(stdout,"[ %03d %03d %03d %03d %03d %03d ]", d[6], d[7], d[8], d[9], d[10], d[11]);
+			fprintf(stdout,"%s", cmd );
 			fflush(stdout);
 		}
 
