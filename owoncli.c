@@ -3,12 +3,14 @@
 #include <stdint.h>
 #include <string.h>
 #include <signal.h>
+#include <sys/time.h>
 
 char help[] = " -a <address> [-t] [-o <filename>] [-d] [-q]\n"\
 			   "\t-h: This help\n"\
 			   "\t-a <address>: Set the address of the B35 meter, eg, -a 98:84:E3:CD:C0:E5\n"\
 			   "\t-t: Generate a text file containing current meter data (default to owon.txt)\n"\
 			   "\t-o <filename>: Set the filename for the meter data ( overrides 'owon.txt' )\n"\
+			   "\t-l <filename>: Set logging and the filename for the log\n"\
 			   "\t-d: debug enabled\n"\
 			   "\t-q: quiet output\n"\
 			   "\n\n\texample: owoncli -a 98:84:E3:CD:C0:E5 -t -o obsdata.txt\n"\
@@ -25,6 +27,7 @@ struct glb {
 	uint8_t textfile_output;
 	uint16_t flags;
 
+	char *log_filename;
 	char *output_filename;
 	char *b35_address;
 
@@ -38,6 +41,7 @@ int init( struct glb *g ) {
 
 	g->output_filename = default_output;
 	g->b35_address = NULL;
+	g->log_filename = NULL;
 
 	return 0;
 }
@@ -55,6 +59,16 @@ int parse_parameters( struct glb *g, int argc, char **argv ) {
 				case 'h':
 					fprintf(stdout,"Usage: %s %s", argv[0], help);
 					exit(1);
+					break;
+
+				case 'l':
+					/* set the logging */
+					i++;
+					if (i < argc) g->log_filename = argv[i];
+					else {
+						fprintf(stderr,"Require log filename; -l <filename>\n");
+						exit(1);
+					}
 					break;
 
 				case 'a':
@@ -110,10 +124,18 @@ int main( int argc, char **argv ) {
 	char uprefix[128];
 	char units[128];
 	uint8_t dps = 0;
-	FILE *fp, *fo;
+	uint32_t logscale = 1;
+	FILE *fp, *fo, *fl;
+	struct timeval t0, t1;
+	uint64_t t0i, t1i;
+	struct timezone tz;
+
+
 	struct glb g;
 
-	fo = fp = NULL;
+	t0i = t1i = 0;
+
+	fo = fp = fl = NULL;
 
 	sigint_pressed = 0;
 	signal(SIGINT, handle_sigint); 
@@ -146,6 +168,22 @@ int main( int argc, char **argv ) {
 	}
 
 	/*
+	 * If required, open the log file, in append mode
+	 *
+	 */
+	if (g.log_filename) {
+
+		fl = fopen(g.log_filename, "a");
+		if (fl == NULL) {
+			fprintf(stderr,"Couldn't open '%s' file to write/append, NO LOGGING\n", g.log_filename);
+		}
+
+		gettimeofday( &t0, &tz );
+		t0i = t0.tv_sec *10 +(t0.tv_usec /100000);
+
+	}
+
+	/*
 	 * If required, open the text file we're going to generate the multimeter
 	 * data in to, this is a single frame only data file it is NOT a log file
 	 *
@@ -172,6 +210,7 @@ int main( int argc, char **argv ) {
 		units[0] = '\0';
 		uprefix[0] = '\0';
 		mmode[0] = '\0';
+		logscale = 1;
 
 
 		if (sigint_pressed) {
@@ -221,7 +260,7 @@ int main( int argc, char **argv ) {
 			case 48: break; // no DP at all (integer) 
 			case 49: v = v/1000; dps = 3; break;
 			case 50: v = v/100; dps = 2; break;
-//			case 51: v = v/100; dps = 2; break; // not a mode
+					 //			case 51: v = v/100; dps = 2; break; // not a mode
 			case 52: v = v/10; dps = 1; break;
 		}
 
@@ -251,29 +290,34 @@ int main( int argc, char **argv ) {
 			case 1: snprintf(units,sizeof(units),"'F" ); break;
 			case 2: snprintf(units,sizeof(units),"'C" ); break;
 			case 4: snprintf(units,sizeof(units),"F"); 
-					if (d[8] & 0x02) snprintf(uprefix, sizeof(uprefix), "n");
+					if (d[8] & 0x02) {
+						snprintf(uprefix, sizeof(uprefix), "n");
+					}
 					break;
 			case 8: snprintf(units,sizeof(units),"Hz"); break;
 			case 16: snprintf(units,sizeof(units),"hFe"); break;
 			case 32: snprintf(units,sizeof(units),"Ω");
 					 switch (d[9]) {
 						 case 8: snprintf(mmode, sizeof(mmode),"Continuity"); break;
-						case 16: snprintf(uprefix, sizeof(uprefix),"M"); break;
-						case 32: snprintf(uprefix, sizeof(uprefix),"k"); break;
+						 case 16: snprintf(uprefix, sizeof(uprefix),"M"); break;
+						 case 32: snprintf(uprefix, sizeof(uprefix),"k"); break;
 					 }
 					 break;
 			case 64: snprintf(units,sizeof(units),"A"); 
-					if (d[9] & 0x80) {
-					   	snprintf(uprefix, sizeof(uprefix),"μ"); 
-					} 
-					if (d[9] & 0x40) {
-						snprintf(uprefix, sizeof(uprefix), "m");
-					}
+					 if (d[9] & 0x80) {
+						 snprintf(uprefix, sizeof(uprefix),"μ"); 
+						 logscale = 1000000;
+					 } 
+					 if (d[9] & 0x40) {
+						 snprintf(uprefix, sizeof(uprefix), "m");
+						 logscale = 1000;
+					 }
 					 break;
 
 			case 128: snprintf(units,sizeof(units),"V"); 
 					  if (d[9] == 64) {
 						  snprintf(uprefix, sizeof(uprefix),"m");
+						  logscale =  1000;
 					  }
 					  break;
 
@@ -303,6 +347,17 @@ int main( int argc, char **argv ) {
 			fflush(fo);
 		}
 
+		if (g.log_filename && fl) {
+			gettimeofday( &t1, &tz );
+			t1i = t1.tv_sec *10 +(t1.tv_usec /100000);
+			fprintf(fl, "%0.1f %0.6f %s\n"
+					, (t1i -t0i)/10.0
+					, v /logscale
+					, units 
+					);
+			fflush(fl);
+		}
+
 		if (!g.quiet) {
 			fprintf(stdout, "\33[2K\r"); // line erase
 			fprintf(stdout, "\x1B[A"); // line up
@@ -316,6 +371,8 @@ int main( int argc, char **argv ) {
 
 	if (pclose(fp)) {
 		fprintf(stdout,"Command not found, or exited with error\n");
+		if (fl) fclose(fl);
+		if (fo) fclose(fo);
 	}
 	return 0;
 }
