@@ -36,6 +36,8 @@ The program will display in text the current meter display and also generate a t
         -t: Generate a text file containing current meter data (default to owon.txt)
         
         -o <filename>: Set the filename for the meter data ( overrides 'owon.txt' )
+
+		-l <log filename>: Log data to file <filename>		( seconds value units )
         
         -d: debug enabled
         
